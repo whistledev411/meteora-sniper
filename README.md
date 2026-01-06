@@ -27,7 +27,7 @@ A high-performance Solana token sniper bot that monitors new Meteora pools in re
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/whistledev411/meteora-sniper.git
 cd meteora-sniper
 ```
 
