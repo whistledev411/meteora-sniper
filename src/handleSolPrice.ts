@@ -31,11 +31,15 @@ export function startSolPricePolling(): void {
 
 export function getSolPriceFromFile(): number | null {
     try {
+        if (!fs.existsSync(jsonFilePath)) {
+            console.warn('SOL price file not found, returning null');
+            return null;
+        }
         const data = fs.readFileSync(jsonFilePath, 'utf8');
         const { solPrice }: SolPriceData = JSON.parse(data);
-        return solPrice;
+        return solPrice || null;
     } catch (error) {
         console.error('Error reading SOL price from file:', error);
-        return 0;
+        return null;
     }
 }

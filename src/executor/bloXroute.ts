@@ -21,9 +21,9 @@ import { BLOXROUTE_AUTH_HEADER, BLOXROUTE_FEE, PRIVATE_KEY } from "../constants"
     MAINNET_API_NY_HTTP // or MAINNET_API_NY_HTTP
   );
   export async function CreateTraderAPITipTransaction(
-    senderAddress:any,
-    tipAmountInLamports:any
-  ) {
+    senderAddress: PublicKey,
+    tipAmountInLamports: number
+  ): Promise<Transaction> {
     const tipAddress = new PublicKey(TRADER_API_TIP_WALLET);
     return new Transaction().add(
       SystemProgram.transfer({
@@ -33,31 +33,40 @@ import { BLOXROUTE_AUTH_HEADER, BLOXROUTE_FEE, PRIVATE_KEY } from "../constants"
       })
     );
   }
-  export async function bloXroute_executeAndConfirm(tx: Transaction, wallet: Keypair) {
-    const fee = BLOXROUTE_FEE;
-    tx.add(
-      await CreateTraderAPITipTransaction(
+
+  export async function bloXroute_executeAndConfirm(
+    tx: Transaction,
+    wallet: Keypair
+  ): Promise<string | false> {
+    try {
+      const fee = BLOXROUTE_FEE;
+      const tipTransaction = await CreateTraderAPITipTransaction(
         wallet.publicKey,
-        (fee) * LAMPORTS_PER_SOL
-      )
-    ); // why 0.001 SOL?
-    tx.sign(wallet);
-    const serializeTxBytes = tx.serialize();
-    const buffTx = Buffer.from(serializeTxBytes);
-    const encodedTx:any = buffTx.toString("base64");
-  
-    const request:any= {
-      transaction: { content: encodedTx, isCleanup: false },
-      frontRunningProtection: false,
-      useStakedRPCs: true, // comment this line if you don't want to directly send txn to current blockleader
-    }
-    const response = await provider.postSubmit(request);
-  
-    if (response.signature) {
-      return response.signature.toString()
-    } else {
-      return false
+        fee * LAMPORTS_PER_SOL
+      );
+      tx.add(tipTransaction);
+      tx.sign(wallet);
+      
+      const serializeTxBytes = tx.serialize();
+      const buffTx = Buffer.from(serializeTxBytes);
+      const encodedTx = buffTx.toString("base64");
+    
+      const request = {
+        transaction: { content: encodedTx, isCleanup: false },
+        frontRunningProtection: false,
+        useStakedRPCs: true, // Send directly to current block leader for faster execution
+      };
+      
+      const response = await provider.postSubmit(request);
+    
+      if (response?.signature) {
+        return response.signature.toString();
+      } else {
+        console.error("BloxRoute transaction failed: No signature in response");
+        return false;
+      }
+    } catch (error) {
+      console.error("Error executing BloxRoute transaction:", error);
+      return false;
     }
   }
-  
-  module.exports = { bloXroute_executeAndConfirm };

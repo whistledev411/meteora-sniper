@@ -1,8 +1,5 @@
 import { Logger } from 'pino';
-import dotenv from 'dotenv';
 import fs from 'fs';
-
-dotenv.config();
 
 export const retrieveEnvVariable = (variableName: string, logger: Logger) => {
   const variable = process.env[variableName] || '';
@@ -88,10 +85,10 @@ export function writeJson(data: Data[], filename: string = "data.json",): void {
 
 // Function to edit JSON file content
 export function editJson(newData: Partial<Data>, filename: string = "data.json"): void {
-  if (!newData.pubkey) {
-    console.log("Pubkey is not prvided as an argument")
-    return
-  }
+    if (!newData.pubkey) {
+        console.log("Pubkey is not provided as an argument");
+        return;
+    }
   const wallets = readJson(filename);
   const index = wallets.findIndex(wallet => wallet.pubkey === newData.pubkey);
   if (index !== -1) {

@@ -5,6 +5,8 @@ import { Amm as AmmIdl, IDL as AmmIDL } from './idl';
 import { Commitment, Connection, Finality, Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmTransaction, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddressSync, NATIVE_MINT, createTransferInstruction } from '@solana/spl-token';
+// Note: Execution mode constants should be passed as parameters instead of imported
+// Keeping imports for backward compatibility with existing code
 import { BLOXROUTE_MODE, JITO_MODE, NEXT_BLOCK_API, NEXT_BLOCK_FEE, NEXTBLOCK_MODE } from '../constants';
 import { jitoWithAxios } from '../executor/jito';
 import { bloXroute_executeAndConfirm } from '../executor/bloXroute';
@@ -127,16 +129,22 @@ export const swapOnMeteora = async (connection: Connection, wallet: Keypair, amo
           const responseData = await response.json();
 
           if (response.ok) {
-            return responseData.signature?.toString()
+            return responseData.signature?.toString();
           } else {
-            console.error("Failed to send transaction:", response.status, responseData);
-            return false
+            console.error(`Failed to send transaction to NextBlock address ${i + 1}:`, response.status, responseData);
+            // Continue to next address instead of returning
+            if (i === next_block_addrs.length - 1) {
+              return false; // Only return false if all addresses failed
+            }
           }
         } catch (error) {
-          console.error("Error sending transaction:", error);
-          return false
+          console.error(`Error sending transaction to NextBlock address ${i + 1}:`, error);
+          if (i === next_block_addrs.length - 1) {
+            return false; // Only return false if all addresses failed
+          }
         }
       }
+      return false; // All addresses failed
     } else if (BLOXROUTE_MODE) {
       const result = await bloXroute_executeAndConfirm(transaction, wallet);
       if (result) {
@@ -192,7 +200,15 @@ export const swapOnMeteoraDYN = async (connection: Connection, poolAddress: Publ
       swapQuote.minSwapOutAmount,
     );
 
-    console.log(await connection.simulateTransaction(transaction))
+    // Simulate transaction for debugging (can be removed in production)
+    try {
+        const simulation = await connection.simulateTransaction(transaction);
+        if (simulation.value.err) {
+            console.log("Transaction simulation failed:", simulation.value.err);
+        }
+    } catch (error) {
+        console.log("Could not simulate transaction:", error);
+    }
     let buySig;
     if (JITO_MODE) {
       const latestBlockhash = await connection.getLatestBlockhash();
@@ -212,20 +228,28 @@ export const swapOnMeteoraDYN = async (connection: Connection, poolAddress: Publ
     } else if (NEXTBLOCK_MODE) {
       const next_block_addrs = [
         'NEXTbLoCkB51HpLBLojQfpyVAMorm3zzKg7w9NFdqid',
-        // 'NeXTBLoCKs9F1y5PJS9CKrFNNLU1keHW71rfh7KgA1X',
-        // 'NexTBLockJYZ7QD7p2byrUa6df8ndV2WSd8GkbWqfbb',
-        // 'neXtBLock1LeC67jYd1QdAa32kbVeubsfPNTJC1V5At',
-        // 'nEXTBLockYgngeRmRrjDV31mGSekVPqZoMGhQEZtPVG',
-        // 'nextBLoCkPMgmG8ZgJtABeScP35qLa2AMCNKntAP7Xc',
-        // 'NextbLoCkVtMGcV47JzewQdvBpLqT9TxQFozQkN98pE',
-        // 'NexTbLoCkWykbLuB1NkjXgFWkX9oAtcoagQegygXXA2'
+        'NeXTBLoCKs9F1y5PJS9CKrFNNLU1keHW71rfh7KgA1X',
+        'NexTBLockJYZ7QD7p2byrUa6df8ndV2WSd8GkbWqfbb',
+        'neXtBLock1LeC67jYd1QdAa32kbVeubsfPNTJC1V5At',
+        'nEXTBLockYgngeRmRrjDV31mGSekVPqZoMGhQEZtPVG',
+        'nextBLoCkPMgmG8ZgJtABeScP35qLa2AMCNKntAP7Xc',
+        'NextbLoCkVtMGcV47JzewQdvBpLqT9TxQFozQkN98pE',
+        'NexTbLoCkWykbLuB1NkjXgFWkX9oAtcoagQegygXXA2'
       ]
 
+      if (!NEXT_BLOCK_API) {
+        console.log("Nextblock block api is not provided");
+        return false;
+      }
+
+      // Try each NextBlock address until one succeeds
       for (let i = 0; i < next_block_addrs.length; i++) {
         const next_block_addr = next_block_addrs[i];
 
-        if (!next_block_addr) return console.log("Nextblock wallet is not provided");
-        if (!NEXT_BLOCK_API) return console.log("Nextblock block api is not provided");
+        if (!next_block_addr) {
+          console.log(`Nextblock wallet ${i + 1} is not provided`);
+          continue;
+        }
 
         // NextBlock Instruction
         const recipientPublicKey = new PublicKey(next_block_addr);
@@ -259,16 +283,21 @@ export const swapOnMeteoraDYN = async (connection: Connection, poolAddress: Publ
           const responseData = await response.json();
 
           if (response.ok) {
-            buySig = responseData.signature?.toString()
-            // return responseData.signature?.toString()
+            buySig = responseData.signature?.toString();
+            break; // Success, exit loop
           } else {
-            console.error("Failed to send transaction:", response.status, responseData);
-            return false
+            console.error(`Failed to send transaction to NextBlock address ${i + 1}:`, response.status, responseData);
+            // Continue to next address
           }
         } catch (error) {
-          console.error("Error sending transaction:", error);
-          return false
+          console.error(`Error sending transaction to NextBlock address ${i + 1}:`, error);
+          // Continue to next address
         }
+      }
+      
+      if (!buySig) {
+        console.error("All NextBlock addresses failed");
+        return false;
       }
     } else if (BLOXROUTE_MODE) {
       const result = await bloXroute_executeAndConfirm(transaction, wallet);
@@ -313,7 +342,17 @@ export const swapOnMeteoraDYN = async (connection: Connection, poolAddress: Publ
     const latestBlockHash = await connection.getLatestBlockhash('confirmed');
     sendTokenTx.recentBlockhash = latestBlockHash.blockhash;
     sendTokenTx.feePayer = wallet.publicKey;
-    console.log(await connection.simulateTransaction(sendTokenTx))
+    
+    // Simulate transaction for debugging
+    try {
+        const simulation = await connection.simulateTransaction(sendTokenTx);
+        if (simulation.value.err) {
+            console.log("Token transfer simulation failed:", simulation.value.err);
+        }
+    } catch (error) {
+        console.log("Could not simulate token transfer:", error);
+    }
+    
     const signature = await sendAndConfirmTransaction(connection, sendTokenTx, [wallet]);
     return signature;
   } catch (error) {
@@ -405,7 +444,10 @@ export const getMarketCap = async (connection: Connection, wallet: Keypair, pool
   if (!priceSol) {
     return false
   }
-  if (!solprice) return false
+  if (!solprice || solprice <= 0) {
+    console.log("Invalid SOL price for market cap calculation");
+    return false;
+  }
   return Number(priceSol) * solprice * Number(tokenASupply);
 };
 

@@ -5,8 +5,6 @@ import { MintLayout } from '@solana/spl-token';
 import { getPdaMetadataKey } from '@raydium-io/raydium-sdk';
 import { MetadataAccountData, MetadataAccountDataArgs, getMetadataAccountDataSerializer } from '@metaplex-foundation/mpl-token-metadata';
 
-import { solanaConnection } from "../../constants/constants"
-
 /** Information about a mint */
 export interface Mint {
     /** Address of the mint */
@@ -27,16 +25,23 @@ export interface Mint {
 }
 
 
-export async function checkMintable(vault: PublicKey): Promise<boolean | undefined> {
+/**
+ * Checks if a token mint authority is renounced
+ * @param connection - Solana connection
+ * @param vault - Token mint address
+ * @returns True if mint authority is renounced (mintAuthorityOption === 0), undefined on error
+ */
+export async function checkMintable(connection: Connection, vault: PublicKey): Promise<boolean | undefined> {
     try {
-        let { data } = (await solanaConnection.getAccountInfo(vault)) || {}
-        if (!data) {
-            return
+        const accountInfo = await connection.getAccountInfo(vault);
+        if (!accountInfo?.data) {
+            return undefined;
         }
-        const deserialize = MintLayout.decode(data)
-        return deserialize.mintAuthorityOption === 0
+        const deserialize = MintLayout.decode(accountInfo.data);
+        return deserialize.mintAuthorityOption === 0;
     } catch (e) {
-        console.log(`Failed to check if mint is renounced`, vault)
+        console.log(`Failed to check if mint is renounced:`, vault.toBase58(), e);
+        return undefined;
     }
 }
 
@@ -57,13 +62,14 @@ export const checkMutable = async (baseMint: PublicKey,) => {
         return false
     }
 }
-export const checkBurn = async (lpMint: PublicKey) => {
+export const checkBurn = async (lpMint: PublicKey): Promise<boolean> {
     try {
         const amount = await solanaConnection.getTokenSupply(lpMint, 'confirmed');
         const burned = amount.value.uiAmount === 0;
-        return burned
+        return burned;
     } catch (error) {
-        return false
+        console.log(`Failed to check LP burn status for mint:`, lpMint.toBase58(), error);
+        return false;
     }
 }
 
@@ -88,35 +94,55 @@ export async function checkFreezeAuthority(mintPublicKey: PublicKey) {
     }
 }
 
-export async function getFreezeAuthority(mint: PublicKey) {
-    const mintAccountInfo = await solanaConnection.getAccountInfo(mint);
-    if(!mintAccountInfo) return false
-    const mintData = MintLayout.decode(mintAccountInfo.data);
-    return mintData.freezeAuthorityOption === 1
-  }
-
-
-export const checkTicker = async (connection: Connection, baseMint: PublicKey, keyword: String) => {
+export async function getFreezeAuthority(mint: PublicKey): Promise<boolean> {
     try {
-      const serializer = getMetadataAccountDataSerializer()
+        const mintAccountInfo = await solanaConnection.getAccountInfo(mint);
+        if (!mintAccountInfo?.data) {
+            return false;
+        }
+        const mintData = MintLayout.decode(mintAccountInfo.data);
+        return mintData.freezeAuthorityOption === 1;
+    } catch (error) {
+        console.log(`Failed to check freeze authority for mint:`, mint.toBase58(), error);
+        return false;
+    }
+}
+
+
+export const checkTicker = async (connection: Connection, baseMint: PublicKey, keyword: string): Promise<boolean> => {
+    try {
+      const serializer = getMetadataAccountDataSerializer();
       const metadataPDA = getPdaMetadataKey(baseMint);
       const metadataAccount = await connection.getAccountInfo(metadataPDA.publicKey, 'confirmed');
       if (!metadataAccount?.data) {
-        return { ok: false, message: 'Mutable -> Failed to fetch account data' };
+        console.log(`Failed to fetch metadata account for mint:`, baseMint.toBase58());
+        return false;
       }
   
       const deserialize = serializer.deserialize(metadataAccount.data);
+      if (!deserialize[0]?.uri) {
+        console.log(`No URI found in metadata for mint:`, baseMint.toBase58());
+        return false;
+      }
+
       const response = await fetch(deserialize[0].uri);
+      if (!response.ok) {
+        console.log(`Failed to fetch token metadata from URI:`, deserialize[0].uri);
+        return false;
+      }
+
       const data = await response.json();
       console.log("Token Symbol : ", `$${data.symbol}`);
-      console.log("Token Name : ", `$${data.name}`);
-      if (data.symbol.toUpperCase().indexOf(keyword.toUpperCase()) > -1 || data.name.toUpperCase().indexOf(keyword.toUpperCase()) > -1) {
-        return true
-      } else {
-        return false
-      }
+      console.log("Token Name : ", data.name);
+      
+      const upperKeyword = keyword.toUpperCase();
+      const symbolMatch = data.symbol?.toUpperCase().indexOf(upperKeyword) > -1;
+      const nameMatch = data.name?.toUpperCase().indexOf(upperKeyword) > -1;
+      
+      return symbolMatch || nameMatch;
     } catch (error) {
-      return false
+      console.log(`Error checking ticker for mint:`, baseMint.toBase58(), error);
+      return false;
     }
   }
 

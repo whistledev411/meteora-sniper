@@ -1,17 +1,27 @@
 {
   "name": "meteora-sniper",
   "version": "1.0.0",
-  "main": "index.ts",
+  "description": "High-performance Solana token sniper bot for Meteora DEX with real-time pool monitoring and advanced filtering",
+  "main": "dist/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
     "jsstart": "node dist/index.js",
     "build": "tsc",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "solana",
+    "sniper",
+    "bot",
+    "meteora",
+    "defi",
+    "trading",
+    "crypto"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@bloxroute/solana-trader-client-ts": "^2.2.2",
     "@coral-xyz/anchor": "0.28.0",
